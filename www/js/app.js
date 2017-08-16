@@ -49,6 +49,11 @@ document.addEventListener('init', function(event) {
         })
     });
     
+    $('.datastore_todo').on('click', function(e) {
+      e.preventDefault();
+      $('#navigator')[0].pushPage('datastore_todo.html');
+    });
+    
     if (ncmb) {
       let user = ncmb.User.getCurrentUser();
       if (user) {
@@ -107,6 +112,70 @@ document.addEventListener('init', function(event) {
           // エラー処理
           showDialog('ログイン失敗', `ログインに失敗しました<br />${err}`);
         });
+    });
+  }
+  
+  // データストアのTodo管理に関するイベント
+  if (page.matches('#datastore_todo')) {
+    const Todo = ncmb.DataStore('Todo');
+    
+    // タスクを追加するイベント
+    $(page).find('.add').on('click', function(e) {
+      e.preventDefault();
+      let todo = new Todo;
+      
+      // ログインしている場合は権限設定を行う
+      let user = ncmb.User.getCurrentUser();
+      if (user) {
+        let acl = new ncmb.Acl();
+        acl
+          .setUserReadAccess(user, true)
+          .setUserWriteAccess(user, true)
+        todo.set('acl', acl);
+      }
+      
+      // タスクを保存する
+      todo
+        .set('value', $('#todo').val())
+        .save()
+        .then(function(todo) {
+          task_add(todo);
+          $('#todo').val('');
+        });
+    });
+    
+    // 初期表示用
+    Todo
+      .fetchAll()
+      .then(function(todos) {
+        for (let i = 0; i < todos.length; i++) {
+          task_add(todos[i]);
+        }
+      });
+    
+    // タスクを追加する処理
+    let task_add = (todo) => {
+      $('#tasks').append(`
+        <ons-list-item class="item">
+          <div class="center">${todo.value}</div>
+          <div class="right">
+          <ons-icon icon="fa-trash-o" class="delete" data-id=${todo.objectId}>
+          </ons-icon>
+          </div>
+        </ons-list-item>
+      `);
+    };
+    
+    // タスクを削除するイベント
+    $(page).on('click', '#tasks', function(e) {
+      e.preventDefault();
+      let todo = new Todo;
+      todo
+        .set('objectId', $(e.target).data('id'))
+        .delete()
+        .then(function() {
+          $(e.target).parents('.item').remove();
+        })
     });
   }
 });
