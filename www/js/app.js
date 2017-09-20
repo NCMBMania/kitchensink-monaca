@@ -37,6 +37,10 @@ document.addEventListener('init', function(event) {
       e.preventDefault();
       $('#navigator')[0].pushPage('idpw_login.html');
     });
+    $(page).find('.member_faceook_login').on('click', function(e) {
+      e.preventDefault();
+      $('#navigator')[0].pushPage('facebook_login.html');
+    });
     $(page).find('.member_logout').on('click', function(e) {
       e.preventDefault();
       ncmb.User.logout()
@@ -77,7 +81,13 @@ document.addEventListener('init', function(event) {
     $('.datastore_geosearch').on('click', function(e) {
       e.preventDefault();
       $('#navigator')[0].pushPage('datastore_geosearch.html');
-    })
+    });
+    
+    $('.datastore_geosearch_2points').on('click', function(e) {
+      e.preventDefault();
+      $('#navigator')[0].pushPage('datastore_geosearch_2points.html');
+    });
+    
     
     if (ncmb) {
       let user = ncmb.User.getCurrentUser();
@@ -322,8 +332,6 @@ document.addEventListener('init', function(event) {
   
   // ファイルストア版メモ
   if (page.matches('#filestore_memo')) {
-    const Memo = ncmb.DataStore('Memo');
-    let memo = null;
     let user = ncmb.User.getCurrentUser();
     if (user) {
       fileName = `memo.${user.objectId}.txt`;
@@ -354,14 +362,10 @@ document.addEventListener('init', function(event) {
         acl.setPublicWriteAccess(true);
       }
       let blob = new Blob([$('#memo').val()], {type: 'text/plain'});
-      console.log(blob)
       ncmb.File
         .upload(fileName, blob, acl)
         .then(function() {
           // ログインしている場合は権限設定を行う
-        })
-        .then(function() {
-          
         })
         .catch(function(err) {
           showDialog('ファイル保存エラー', `ファイルの保存に失敗しました<br />${err}`);
@@ -369,31 +373,60 @@ document.addEventListener('init', function(event) {
     });
   }
   
+  if (page.matches('#datastore_geosearch') || 
+    page.matches('#datastore_geosearch_2points')) {
+      // 山手の線データの取り込み
+      let Station = ncmb.DataStore('Station');
+      $(page).find('.import').on('click', function(e) {
+        $.ajax({
+          dataType: 'json',
+          url: '../resources/yamanote.json'
+        })
+        .then(function(results) {
+          let ary = [];
+          for (let i = 0; i < results.length; i++) {
+            ary.push(saveStation(results[i]));
+          }
+          // まとめて処理
+          Promise
+            .all(ary)
+            .then(function(results) {
+              // 取り込み完了
+            })
+        });
+      });
+      
+      // すでにデータストア上にデータがあるかどうかを確認して、なければデータを作成する
+      let saveStation = (station) => {
+        return new Promise((res, rej) => {
+          Station
+            .where({name: station.name})
+            .fetch()
+            .then(function(data) {
+              if (data.name) {
+                return res(data)
+              }
+              var geo = new ncmb.GeoPoint(new Number(station.latitude), new Number(station.longitude));
+              let s = new Station;
+              s
+                .set('name', station.name)
+                .set('geo', geo)
+                .save()
+                .then(function(e) {
+                  res(e);
+                })
+                .catch(function(e) {
+                  rej(e);
+                })
+            })
+        });
+      }
+  }
+  
   // 位置情報検索
   if (page.matches('#datastore_geosearch')) {
     
-    // 山手の線データの取り込み
-    $(page).find('.import').on('click', function(e) {
-      $.ajax({
-        dataType: 'json',
-        url: '../resources/yamanote.json'
-      })
-      .then(function(results) {
-        let Station = ncmb.DataStore('Station');
-        let ary = [];
-        for (let i = 0; i < results.length; i++) {
-          ary.push(saveStation(results[i]));
-        }
-        // まとめて処理
-        Promise
-          .all(ary)
-          .then(function(results) {
-            // 取り込み完了
-          })
-      });
-    });
-
-    let mapDiv = document.getElementById("map");
+    let mapDiv = $(page).find("#map")[0];
     let currentPosition = null;
     let Station = ncmb.DataStore('Station');
     let markers = [];
@@ -448,31 +481,102 @@ document.addEventListener('init', function(event) {
         
       });
     
-    // すでにデータストア上にデータがあるかどうかを確認して、なければデータを作成する
-    let saveStation = (station) => {
-      return new Promise((res, rej) => {
-        Station
-          .where({name: station.name})
-          .fetch()
-          .then(function(data) {
-            if (data.name) {
-              return res(data)
+  }
+  
+  // 位置情報検索（2点間）
+  if (page.matches('#datastore_geosearch_2points')) {
+    let mapDiv = $(page).find("#map")[0];
+    let Station = ncmb.DataStore('Station');
+    let markers = [];
+    let map = null;
+    let points = [];
+    
+    // 初期の地図表示
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        let geo = position.coords;
+        map = new google.maps.Map(mapDiv, {
+          center: new google.maps.LatLng(geo.latitude, geo.longitude),
+          zoom: 16,
+        });
+        
+        // マップをクリックした際のイベントです
+        map.addListener('click', (argument) => {
+          switch (points.length) {
+          case 0:
+            points.push({
+              lat: argument.latLng.lat(),
+              lng: argument.latLng.lng()
+            });
+            addMaker(points);
+            break;
+          case 1:
+            points.push({
+              lat: argument.latLng.lat(),
+              lng: argument.latLng.lng()
+            });
+            addMaker(points);
+            searchMap(points);
+            break;
+          case 2:
+            points[0] = points[1];
+            points[1] = {
+              lat: argument.latLng.lat(),
+              lng: argument.latLng.lng()
             }
-            var geo = new ncmb.GeoPoint(new Number(station.latitude), new Number(station.longitude));
-            let s = new Station;
-            s
-              .set('name', station.name)
-              .set('geo', geo)
-              .save()
-              .then(function(e) {
-                res(e);
-              })
-              .catch(function(e) {
-                rej(e);
-              })
-          })
+            addMaker(points);
+            searchMap(points);
+          }
+        });
+        
+        // 2点のマーカーを立てます
+        let addMaker = (points) => {
+          for (let i = 0; i < markers.length; i++) {
+            markers[i].setMap(null);
+          }
+          for (let i = 0; i < points.length; i++) {
+            let marker = new google.maps.Marker({
+              map: map,
+	            position: new google.maps.LatLng(points[i].lat, points[i].lng)
+            });
+            markers.push(marker);
+          }
+        }
+        
+        // 検索し、その結果にマーカーを立てます
+        let searchMap = (points) => {
+          // 位置情報を取得
+          let point = points[0];
+          var geo1 = new ncmb.GeoPoint(point.lat, point.lng);
+          point = points[1];
+          var geo2 = new ncmb.GeoPoint(point.lat, point.lng);
+          
+          Station
+            .withinSquare('geo', geo1, geo2)
+            .fetchAll()
+            .then((stations) => {
+              // マーカーを立てる
+              for (let i = 0; i < stations.length; i++) {
+                let station = stations[i];
+                let marker = new google.maps.Marker({
+                  map: map,
+                  label: '🚉',
+    	            position: new google.maps.LatLng(
+                    station.geo.latitude,
+                    station.geo.longitude
+                  )
+                });
+                markers.push(marker);
+              }
+            })
+            .catch((err) => {
+              showDialog('検索失敗', `検索に失敗しました<br />${err}`);
+            });
+        }
+      },
+      (error) => {
+        
       });
-    }
   }
   
   // 写真アップロードアプリ
@@ -534,5 +638,77 @@ document.addEventListener('init', function(event) {
           load_image(photos[i].fileName);
         }
       })
+  }
+  
+  // Facebook認証
+  if (page.matches('#faceook-login')) {
+    var appId = '369092659833982';
+    openFB.init({
+      appId: appId,
+      oauthRedirectURL: 'https://www.facebook.com/connect/login_success.html'
+    });
+    
+    openFB.getLoginStatus(function(response) {
+      console.log(response);
+    });
+    
+    $(page).find('.login').on('click', function(e) {
+      e.preventDefault();
+      openFB.login(function(response) {
+        if (response.status === 'connected') {
+        }else {
+          return;
+        }
+        var authResponse = response.authResponse;
+        var expire_date = new Date(
+          authResponse.expires_in * 1000 + (new Date()
+        ).getTime()).toJSON();
+        var date = {__type:"Date", iso: expire_date};
+        myInformation()
+          .then(function(userData) {
+            var user = new ncmb.User();
+            user.signUpWith('facebook', {
+              authData: {
+                id: userData.id,
+                access_token: authResponse.access_token,
+                expiration_date: date
+              }
+            })
+            // Facebookを使った会員登録処理完了
+            .then(function(user) {
+              return ncmb.User.loginWith(user);
+            })
+            // 会員登録処理失敗
+            .catch(function(err) {
+              console.log(err);
+            })
+            .then(function(user) {
+              showDialog('ログイン完了', 'ログインしました');
+              $('.member_login_status').text(user.userName);
+              $('#navigator')[0].popPage();
+            });
+          }, function(err) {
+            // Facebook側のエラー
+            console.log(err);
+          })
+      });
+    });
+    
+    var myInformation = function() {
+      return new Promise(function(res, rej) {
+        openFB.api({
+          path: '/me',
+          params: {
+            fields: 'id,name'
+          },
+          success: function(response) {
+            res(response);
+          },
+          error: function(response) {
+            rej(response);
+          }
+        })
+      });
+    }
   }
 });
