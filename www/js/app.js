@@ -499,84 +499,81 @@ document.addEventListener('init', function(event) {
           center: new google.maps.LatLng(geo.latitude, geo.longitude),
           zoom: 16,
         });
-        
         // マップをクリックした際のイベントです
         map.addListener('click', (argument) => {
-          switch (points.length) {
-          case 0:
+          if (points.length < 2) {
             points.push({
               lat: argument.latLng.lat(),
               lng: argument.latLng.lng()
             });
-            addMaker(points);
-            break;
-          case 1:
-            points.push({
-              lat: argument.latLng.lat(),
-              lng: argument.latLng.lng()
-            });
-            addMaker(points);
-            searchMap(points);
-            break;
-          case 2:
+          } else {
             points[0] = points[1];
             points[1] = {
               lat: argument.latLng.lat(),
               lng: argument.latLng.lng()
             }
-            addMaker(points);
+          }
+          
+          // マーカーを立てます
+          addMaker(points);
+          
+          // 2点あっったら検索します
+          if (points.length == 2) {
             searchMap(points);
           }
         });
-        
-        // 2点のマーカーを立てます
-        let addMaker = (points) => {
-          for (let i = 0; i < markers.length; i++) {
-            markers[i].setMap(null);
-          }
-          for (let i = 0; i < points.length; i++) {
-            let marker = new google.maps.Marker({
-              map: map,
-	            position: new google.maps.LatLng(points[i].lat, points[i].lng)
-            });
-            markers.push(marker);
-          }
-        }
-        
-        // 検索し、その結果にマーカーを立てます
-        let searchMap = (points) => {
-          // 位置情報を取得
-          let point = points[0];
-          var geo1 = new ncmb.GeoPoint(point.lat, point.lng);
-          point = points[1];
-          var geo2 = new ncmb.GeoPoint(point.lat, point.lng);
-          
-          Station
-            .withinSquare('geo', geo1, geo2)
-            .fetchAll()
-            .then((stations) => {
-              // マーカーを立てる
-              for (let i = 0; i < stations.length; i++) {
-                let station = stations[i];
-                let marker = new google.maps.Marker({
-                  map: map,
-                  label: '🚉',
-    	            position: new google.maps.LatLng(
-                    station.geo.latitude,
-                    station.geo.longitude
-                  )
-                });
-                markers.push(marker);
-              }
-            })
-            .catch((err) => {
-              showDialog('検索失敗', `検索に失敗しました<br />${err}`);
-            });
-        }
       },
       (error) => {
         
-      });
+    });
+        
+    
+    // 2点のマーカーを立てます
+    let addMaker = (points) => {
+      // 既存のマーカーはすべて消します
+      for (let i = 0; i < markers.length; i++) {
+        markers[i].setMap(null);
+      }
+      // マーカーを立てます
+      for (let i = 0; i < points.length; i++) {
+        let marker = new google.maps.Marker({
+          map: map,
+          position: new google.maps.LatLng(points[i].lat, points[i].lng)
+        });
+        markers.push(marker);
+      }
+    }
+    
+    // 検索し、その結果にマーカーを立てます
+    let searchMap = (points) => {
+      // 位置情報を取得
+      let point = points[0];
+      var geo1 = new ncmb.GeoPoint(point.lat, point.lng);
+      point = points[1];
+      var geo2 = new ncmb.GeoPoint(point.lat, point.lng);
+      
+      Station
+        .withinSquare('geo', geo1, geo2)
+        .fetchAll()
+        .then((stations) => {
+          // マーカーを立てる
+          for (let i = 0; i < stations.length; i++) {
+            let station = stations[i];
+            let marker = new google.maps.Marker({
+              map: map,
+              label: '🚉',
+	            position: new google.maps.LatLng(
+                station.geo.latitude,
+                station.geo.longitude
+              )
+            });
+            markers.push(marker);
+          }
+        })
+        .catch((err) => {
+          showDialog('検索失敗', `検索に失敗しました<br />${err}`);
+        });
+    }
   }
   
   // 写真アップロードアプリ
